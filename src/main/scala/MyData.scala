@@ -4,8 +4,11 @@ import scodec.{bits => _, _}
 import scodec.codecs._
 import scodec.bits._
 
+object DnsLenses {
+  
+}
 
-object MyData {
+object DnsCodec {
   import scalaz.NonEmptyList 
   import scalaz.syntax.foldable1._
 
@@ -54,7 +57,7 @@ object MyData {
   
     roundTrip(DnsString(NonEmptyList("www", List("netbsd", "org"): _*)), dnsString)
 
-    val requestCodec = (
+    val dnsRequestCodec = (
     ("Transaction ID"         | uint16)               ::
     ("Response"               | constant(bin"0"))     :: 
     ("Opcode"                 | ignore(4))            ::
@@ -99,7 +102,7 @@ object MyData {
     ("Name"                   | constant(hex"c0 0c"))
   ).dropUnits
     
-  def responseCodec = (
+  def dnsResponseCodec = (
     header :::
     ("Type"                   | constant(hex"00 01")) ::
     ("Class"                  | constant(hex"00 01")) ::

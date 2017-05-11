@@ -48,47 +48,43 @@ object CreateNetty {
   import io.netty.handler.logging.LogLevel
   import io.netty.handler.logging.LoggingHandler
   import io.netty.util.concurrent.DefaultThreadFactory
+  import scalaz.syntax.either._
+
+  type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
   
-  def makeNettyClient[A](host: String, port: Int)(toa: DatagramPacket => \/[Throwable, A])(se: A  => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
+  def makeNettyClient[A](host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
     val connectFactory = new DefaultThreadFactory("connect")
     val connectGroup = new NioEventLoopGroup(1, connectFactory, NioUdtProvider.MESSAGE_PROVIDER)
     Task.delay {
+      
       val bs = new Bootstrap()
+      val (handler, ctxtask) = createHandler(incoming)
       bs.group(connectGroup).channelFactory(NioUdtProvider.MESSAGE_CONNECTOR).handler(new ChannelInitializer[UdtChannel]() {
         override def initChannel(ch: UdtChannel): Unit =
-          ch.pipeline().addLast(new LoggingHandler(LogLevel.INFO), makeHandler(se))
+          ch.pipeline().addLast(new LoggingHandler(LogLevel.INFO), handler)
       })
       //start the stuff
       val f = bs.connect(host, port).sync()
       f.channel().closeFuture().sync()
       println("started")
-    }.onFinish(t => Task.delay(connectGroup.shutdownGracefully()).map(_ => ()))
+      ctxtask.map(ctx => (dg: DatagramPacket) => Task.delay {
+        ctx.write(dg)
+        ctx.flush()
+        ()
+      })
+    }.flatMap(a => a)//.onFinish(t => Task.delay(connectGroup.shutdownGracefully()).map(_ => ()))
   }
-
-
-  def makeHandler[A](f: (DatagramPacket => A) => Task[Unit]): SimpleChannelInboundHandler[DatagramPacket] = ??? /*new SimpleChannelInboundHandler[DatagramPacket] {
-    
-  }*/
-}
-
-class NettyHandler(f: DatagramPacket => \/[Throwable, (InetSocketAddress, Array[Byte])]) extends SimpleChannelInboundHandler[DatagramPacket] {
-  var context: Option[ChannelHandlerContext] = None 
   
-  override def channelActive(ctx: ChannelHandlerContext): Unit = context = Option(ctx)
+  def createHandler(incoming: DatagramPacket => Task[Unit]): (DGHandler, Task[ChannelHandlerContext]) = {
+    var t: Task[ChannelHandlerContext] = Task.fail(new Throwable("not initialized"))
+    val handler = new SimpleChannelInboundHandler[DatagramPacket] {
+      override def channelActive(ctx: ChannelHandlerContext): Unit = { 
+        t = Task.async(f => f(ctx.right[Throwable])) 
+      }
 
-  def channelRead0(ctx: ChannelHandlerContext, packet: DatagramPacket): Unit = {
-    /*f(packet).flatMap(bytes => Task.delay {
-      val npacket = new DatagramPacket(Unpooled.copiedBuffer(bytes), packet.sender())
-      logger.info("writing packets to " + packet.sender.toString)
-      ctx.write(npacket)
-      ctx.flush()
-    }).timed(2.minutes).runAsync(r => logger.debug("our response task has finished = " + r))*/
-  }
-
-  //def sendPacket(d: DatagramPacket): Task[Unit] = 
-
-  override def channelReadComplete(ctx: ChannelHandlerContext): Unit = {
-    ctx.flush()
-    ()
+      override def channelRead0(ctx: ChannelHandlerContext, packet: DatagramPacket): Unit =
+        incoming(packet).map(_ => ctx.flush()).attemptRunFor(1.seconds) //TODO: can I flush here?
+    }
+    (handler, t)
   }
 }

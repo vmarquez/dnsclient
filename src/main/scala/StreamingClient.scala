@@ -12,18 +12,18 @@ import scalaz.syntax.std.option._
 import scalaz.NonEmptyList
 
 object Test {
-  import MyData._
+  import DnsCodec._
 
   def client(nel: NonEmptyList[String]) = udp.listen(8080) {
     udp.eval_(Task.delay { println("hello world") }) ++
     (for {
-      request <- asProcess(requestCodec.encode(Request(30144, DnsString(nel))))
+      request <- asProcess(dnsRequestCodec.encode(Request(30144, DnsString(nel))))
       _ <- udp.send(to = l3dns, request.bytes)
       _ = println("ok we sent")
       //packet <- udp.receive(maxSize)
       packet <- udp.receive(1024, 20.seconds.some)
       _ = println("recieved")
-      response <- asProcess(responseCodec.decode(packet.bytes.bits))
+      response <- asProcess(dnsResponseCodec.decode(packet.bytes.bits))
       _ = println("response = " + response)
     } yield List(response))
   }
