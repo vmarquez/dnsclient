@@ -104,7 +104,6 @@ import scalaz.syntax.either._
 import scodec.Err
 case class CpsFunction[A](f: (A => Task[Unit]) => Task[A => Task[Unit]]) {
     
-    val i = 1.right[String] 
     def to[B](implicit I: Iso[A, B]): CpsFunction[B] =
       CpsFunction((bf: (B => Task[Unit])) => {
         val y = f((a: A) => bf(I.get(a))) 
@@ -112,11 +111,11 @@ case class CpsFunction[A](f: (A => Task[Unit]) => Task[A => Task[Unit]]) {
     }) 
 
     def toSafely[B](implicit I: Iso[A, B]): CpsFunction[Err \/ B] = 
-      CpsFunction(bertf => 
-        f(a => bertf(I.get(a).right[Err]).map(at => (b: Err \/ B) => b match {
-          case -\/(e) => Task.fail(e) 
-          case \/-(b) => I.rget(b) 
+      CpsFunction(bertf => {
+        f(a => bertf(I.get(a).right[Err])).map(at => (b: Err \/ B) => b match {
+          case -\/(e) => Task.fail(new Throwable(e.message))
+          case \/-(b) => at(I.rget(b))
         })
-      ))
+      })
   }
 
