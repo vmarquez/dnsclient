@@ -1,12 +1,6 @@
-package dnsclient 
-
+package dnsclient
 
 //taken from experimental scalaz branches
-
-import scalaz._
-import Scalaz._
-
-
 object LensHelpers {
 
   import scalaz.{ProChoice, Profunctor, \/, -\/, \/-}
@@ -49,44 +43,3 @@ object LensHelpers {
   }
 }
 
-trait Iso[S, A] { self =>
-  import LensHelpers._
-  def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S]
-
-  def get(s: S): A = 
-    stab[Forget[A, ?, ?]](Profunctor[Forget[A, ?, ?]])(Forget[A, A, A](a => a)).forget(s)
-
-  def rget(a: A): S =
-    stab[RConst](Profunctor[RConst])(RConst[A, A](a)).b
-
-  def compose[B](iso: Iso[A, B]): Iso[S, B] = new Iso[S, B] {
-    override def stab[P[_,_]](implicit P: Profunctor[P]): P[B, B] => P[S, S] =
-      iso.stab(P) andThen self.stab(P)
-  }
-}
-
-object Iso {
-  def apply[S, A](sa: S => A, as: A => S): Iso[S, A] = new Iso[S, A] {
-    override def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S] = 
-      Profunctor[P].dimap(_)(sa)(as)   
-  }
-}
-
-object ScodecTest {
-  import scodec.bits._ 
-  import scodec._
-  import io.netty.buffer.Unpooled
-  import io.netty.channel.socket.DatagramPacket
-  import java.net.InetSocketAddress
-  import scodec.interop.scalaz._
-
-  //implicit def codecIso[A](implicit codec: Codec[A]): Iso[Attempt[BitVector], Attempt[A]] = Iso(bv => bv.flatMap(b => codec.decode(b).map(_.value)), (aa) => aa.flatMap(codec.encode))
-
-  implicit def codecIso[A](implicit codec: Codec[A]): Iso[Err \/ BitVector, Err \/ A] = Iso(bv => bv.flatMap(b => codec.decode(b).map(_.value).toDisjunction), (aa) => aa.flatMap(codec.encode(_).toDisjunction))
- 
-  implicit def datagramIso: Iso[DatagramPacket, (InetSocketAddress, Array[Byte])] = Iso(dgp => (dgp.recipient, dgp.content.array), (t) => new DatagramPacket(Unpooled.copiedBuffer(t._2), t._1))
-
-  implicit def bvToBa: Iso[Err \/ BitVector, Err \/ Array[Byte]] = Iso(bv => bv.map(b => b.toByteArray), ba => ba.map(b => ByteVector(b).toBitVector))
-  
-
-}

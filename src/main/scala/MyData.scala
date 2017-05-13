@@ -4,6 +4,8 @@ import scodec.{bits => _, _}
 import scodec.codecs._
 import scodec.bits._
 
+
+
 object DnsLenses {
   
 }
@@ -11,11 +13,12 @@ object DnsLenses {
 object DnsCodec {
   import scalaz.NonEmptyList 
   import scalaz.syntax.foldable1._
-
+  
+  trait DnsPacket
   case class DnsString(nel: NonEmptyList[String])  
-  case class Request(transactionID: Int, name: DnsString)
+  case class Request(transactionID: Int, name: DnsString) extends DnsPacket
   case class IPV4(a: Int, b: Int, c: Int, d: Int)
-  case class Response(transactionID: Int, name: DnsString, address: IPV4)
+  case class Response(transactionID: Int, name: DnsString, address: IPV4) extends DnsPacket
 
   def ipv4: Codec[IPV4] = (uint8 :: uint8 :: uint8 :: uint8).as[IPV4]
 

@@ -4,7 +4,7 @@ import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.channel.socket.DatagramPacket
-import scalaz.\/
+import scalaz.{\/, -\/, \/-}
 import scalaz.concurrent.Task
 import scala.concurrent.duration._
 import java.net.InetSocketAddress
@@ -49,14 +49,25 @@ object CreateNetty {
   import io.netty.handler.logging.LoggingHandler
   import io.netty.util.concurrent.DefaultThreadFactory
   import scalaz.syntax.either._
+  import scalaz.Profunctor
+  import scodec.Err
 
   type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
+  import DnsCodec._ 
+  def sendPacket(host: String, port: Int): Task[DnsPacket => Task[Unit]] = {
+    val f = CpsFunction(makeNettyClient(host, port) _)
+    import CodecLenses._
+    
+    val codec = implicitly[Iso[Err \/ DnsPacket, Err \/ DatagramPacket]]      
+    val finalfunc = f.toSafely[Err \/ DnsPacket] 
+  }
+
   
-  def makeNettyClient[A](host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
+  //todo: instead of \/ to Task[Unit], make an iso for DT => Task ? 
+  def makeNettyClient(host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
     val connectFactory = new DefaultThreadFactory("connect")
     val connectGroup = new NioEventLoopGroup(1, connectFactory, NioUdtProvider.MESSAGE_PROVIDER)
     Task.delay {
-      
       val bs = new Bootstrap()
       val (handler, ctxtask) = createHandler(incoming)
       bs.group(connectGroup).channelFactory(NioUdtProvider.MESSAGE_CONNECTOR).handler(new ChannelInitializer[UdtChannel]() {
@@ -88,3 +99,24 @@ object CreateNetty {
     (handler, t)
   }
 }
+
+import scalaz.syntax.either._
+import scodec.Err
+case class CpsFunction[A](f: (A => Task[Unit]) => Task[A => Task[Unit]]) {
+    
+    val i = 1.right[String] 
+    def to[B](implicit I: Iso[A, B]): CpsFunction[B] =
+      CpsFunction((bf: (B => Task[Unit])) => {
+        val y = f((a: A) => bf(I.get(a))) 
+        y.map(bt => (b: B) => bt(I.rget(b)))
+    }) 
+
+    def toSafely[B](implicit I: Iso[A, B]): CpsFunction[Err \/ B] = 
+      CpsFunction(bertf => 
+        f(a => bertf(I.get(a).right[Err]).map(at => (b: Err \/ B) => b match {
+          case -\/(e) => Task.fail(e) 
+          case \/-(b) => I.rget(b) 
+        })
+      ))
+  }
+
