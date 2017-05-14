@@ -19,6 +19,8 @@ object DnsCodec {
   case class Request(transactionID: Int, name: DnsString) extends DnsPacket
   case class IPV4(a: Int, b: Int, c: Int, d: Int)
   case class Response(transactionID: Int, name: DnsString, address: IPV4) extends DnsPacket
+ 
+  case class FullResponse(transactionId: Int, name: DnsString, addresses: Vector[IPV4]) extends DnsPacket
 
   def ipv4: Codec[IPV4] = (uint8 :: uint8 :: uint8 :: uint8).as[IPV4]
 
@@ -80,7 +82,8 @@ object DnsCodec {
   ).dropUnits.as[Request]
 
   def flags = (
-    ("Response"               | constant(bin"1"))     :: 
+    //("Response"               | constant(bin"1"))     :: 
+    ("Response"               | ignore(1)) :: 
     ("Opcode"                 | ignore(4))            ::
     ("Authorative"            | ignore(1))            ::
     ("Truncated"              | ignore(1))            ::
@@ -96,7 +99,7 @@ object DnsCodec {
     ("Transaction ID"         | uint16)               ::
     flags :::
     ("Questions"              | constant(hex"00 01")) ::
-    ("Answer RRs"             | constant(hex"00 01")) ::
+    ("Answer RRs"             | ignore(16))           ::
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
     ("Name"                   | dnsString)            ::
@@ -105,7 +108,7 @@ object DnsCodec {
     ("Name"                   | constant(hex"c0 0c"))
   ).dropUnits
     
-  def dnsResponseCodec = (
+  def xdnsResponseCodec = (
     header :::
     ("Type"                   | constant(hex"00 01")) ::
     ("Class"                  | constant(hex"00 01")) ::
@@ -114,4 +117,21 @@ object DnsCodec {
     ("Address"                | ipv4)
   ).dropUnits.as[Response]
 
+  def dnsResponseCodec = (
+    header :::
+    ("Type"                   | constant(hex"00 01")) ::
+    ("Class"                  | constant(hex"00 01")) ::
+    ("TTL"                    | ignore(32))           ::
+    ("Data Length"            | constant(hex"00 04")) ::
+    ("Address"                | vector(ipv4))
+  ).dropUnits.as[FullResponse]
+
 }
+
+/*
+import scalaz.NonEmptyList
+import dnsclient._
+import Test._
+
+client(NonEmptyList("reddit", List("com"): _*)).run.run 
+*/
