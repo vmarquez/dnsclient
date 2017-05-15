@@ -16,11 +16,16 @@ object DnsCodec {
   
   trait DnsPacket
   case class DnsString(nel: NonEmptyList[String])  
-  case class Request(transactionID: Int, name: DnsString) extends DnsPacket
+  
+  case class Request(transactionID: Int, questions: Vector[DnsString]) extends DnsPacket
+
   case class IPV4(a: Int, b: Int, c: Int, d: Int)
-  //case class Response(transactionID: Int, name: DnsString, address: IPV4) extends DnsPacket
  
-  case class Response(transactionId: Int, name: DnsString, addresses: Vector[IPV4]) extends DnsPacket
+  case class Response(transactionId: Int, name: DnsString, addresses: Vector[ResourceRecord]) extends DnsPacket
+
+  case class ResourceRecord(ttl: Long, ip: IPV4)
+
+  def resourceRecordCodec: Codec[ResourceRecord] = (ignore(64) :: uint32 :: ipv4).as[ResourceRecord]
 
   def ipv4: Codec[IPV4] = (uint8 :: uint8 :: uint8 :: uint8).as[IPV4]
 
@@ -38,22 +43,27 @@ object DnsCodec {
         cur <- acc
         b <- encodeStr(s)
       } yield cur ++ b 
-    }.map(_ ++ BitVector.lowByte)
+    }.map(_ ++ BitVector.lowByte ++ hex"00 01".toBitVector ++ hex"00 01".toBitVector)
       
     import Attempt._
     override def decode(bits0: BitVector): Attempt[DecodeResult[DnsString]] = {
-      def go(acc: List[String], bits: BitVector): Attempt[DecodeResult[NonEmptyList[String]]] =
+      def go(acc: List[String], bits: BitVector): Attempt[DecodeResult[NonEmptyList[String]]] = {
+        println("acc = " + acc)
+        println("bits length = " + bits.length)
         (uint8.decode(bits), acc) match {
           case (Successful(DecodeResult(v, rem)), h :: t) if (v == 0) =>
+            println("v == 0")
             Successful(DecodeResult(NonEmptyList(h, t: _*), rem))
           case (Successful(DecodeResult(v, rem)), _) if (v != 0) =>
+            println("not 0")
             fixedSizeBytes(v.toLong, utf8).decode(rem) match {
-              case Attempt.Successful(DecodeResult(vs, rem2)) => go(vs :: acc, rem2)
+              case Attempt.Successful(DecodeResult(vs, rem2)) => go(vs :: acc, rem2.splitAt(40)._2)
               case f: Attempt.Failure => f
             }
           case (f: Failure, _) => f
           case _ => Failure(Err("no dnsstring data to process"))
         }
+      }
         go(Nil, bits0).map(_.map(nel => DnsString(nel)))
       }
     }
@@ -76,10 +86,23 @@ object DnsCodec {
     ("Answer RRs"             | ignore(16))           ::
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
-    ("Name"                   | dnsString)            ::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01"))
+    ("questions"              | vector(dnsString)) 
+    
+    //("Name"                   | dnsString)            ::
+    //("Type"                   | constant(hex"00 01")) ::
+    //("Class"                  | constant(hex"00 01"))
   ).dropUnits.as[Request]
+
+  //case class Question(dnsString: DnsString)
+
+  //def questionsCodec: Codec[Question] =
+  //  ("question"  | (dnsString :: ("type" | constant(hex"00 01")) :: ("class" | constant(hex"00 01")))).dropUnits.as[Question]
+
+  //def questionsCodec: Codec[Questions] =
+  //  ("questions" | vector(dnsString)).as[Questions]
+
+  //def questionCodec =
+  //  vector((dnsString :: ("type" | constant(hex"00 01")) :: ("class" | constant(hex"00 01"))))
 
   def xflags = (
     ("Response"               | ignore(1)) :: 
@@ -93,7 +116,18 @@ object DnsCodec {
     ("Non-authenticated data" | ignore(1))            ::
     ("Reply code"             | ignore(4))
   ).dropUnits
- 
+  
+  def dnsTestResponseCodec = (
+    ("Transaction ID"         | uint16)               ::
+    xflags :::
+    ("Questions"              | constant(hex"00 01")) ::
+    ("Answer RRs"             | ignore(16))           ::
+    ("Authority RRs"          | ignore(16))           ::
+    ("Additional RRs"         | ignore(16))           ::
+    ("Query Name"                   | dnsString)             //queries?
+    //("Address ResourceRecords"                | vector(resourceRecordCodec))
+  ).dropUnits //.as[Response]
+
   def dnsResponseCodec = (
     ("Transaction ID"         | uint16)               ::
     xflags :::
@@ -101,15 +135,8 @@ object DnsCodec {
     ("Answer RRs"             | ignore(16))           ::
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
-    ("Name"                   | dnsString)            ::
-    ("Type"                   | ignore(16))           ::
-    ("Class"                  | ignore(16))           ::
-    ("NameR"                  | ignore(16))           ::
-    ("TypeR"                  | constant(hex"00 01")) ::
-    ("ClassR"                 | constant(hex"00 01")) ::
-    ("TTL"                    | ignore(32))           ::
-    ("Data Length"            | constant(hex"00 04")) :: //should this matter?
-    ("Address"                | vector(ipv4))
+    ("Query Name"                   | dnsString)            :: //queries?
+    ("Address ResourceRecords"                | vector(resourceRecordCodec))
   ).dropUnits.as[Response]
 }
 
@@ -119,4 +146,13 @@ import dnsclient._
 import Test._
 
 client(NonEmptyList("reddit", List("com"): _*)).run.run 
+import scodec.bits._
+import dnsclient.DnsCodec._ 
+
+val bits = hex"0x0672656464697403636f6d0000010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c".take(16).toBitVector 
+
+he0x75c0818000010004000000000672656464697403636f6d0000010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c"
+                                                   "0x00010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c
+                            0x0672656464697403636f6d0000010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c 
+                                                          "0xc00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c
 */
