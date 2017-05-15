@@ -54,13 +54,13 @@ object CreateNetty {
 
   type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
   import DnsCodec._ 
-  def sendPacket(host: String, port: Int): Task[DnsPacket => Task[Unit]] = {
-    val f = CpsFunction(makeNettyClient(host, port) _)
-    import CodecLenses._
-    
-    val codec = implicitly[Iso[Err \/ DnsPacket, Err \/ DatagramPacket]]      
-    val finalfunc = f.toSafely[Err \/ DnsPacket] 
-  }
+  //def sendPacket(host: String, port: Int): Task[DnsPacket => Task[Unit]] = {
+  //  val f = CpsFunction(makeNettyClient(host, port) _)
+  //  import CodecLenses._
+  //  
+  //  val codec = implicitly[Iso[Err \/ DnsPacket, Err \/ DatagramPacket]]      
+  //  val finalfunc = f.toSafely[Err \/ DnsPacket] 
+  //}
 
   
   //todo: instead of \/ to Task[Unit], make an iso for DT => Task ? 

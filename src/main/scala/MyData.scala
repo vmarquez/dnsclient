@@ -18,9 +18,9 @@ object DnsCodec {
   case class DnsString(nel: NonEmptyList[String])  
   case class Request(transactionID: Int, name: DnsString) extends DnsPacket
   case class IPV4(a: Int, b: Int, c: Int, d: Int)
-  case class Response(transactionID: Int, name: DnsString, address: IPV4) extends DnsPacket
+  //case class Response(transactionID: Int, name: DnsString, address: IPV4) extends DnsPacket
  
-  case class FullResponse(transactionId: Int, name: DnsString, addresses: Vector[IPV4]) extends DnsPacket
+  case class Response(transactionId: Int, name: DnsString, addresses: Vector[IPV4]) extends DnsPacket
 
   def ipv4: Codec[IPV4] = (uint8 :: uint8 :: uint8 :: uint8).as[IPV4]
 
@@ -62,7 +62,7 @@ object DnsCodec {
   
     roundTrip(DnsString(NonEmptyList("www", List("netbsd", "org"): _*)), dnsString)
 
-    val dnsRequestCodec = (
+   val dnsRequestCodec = (
     ("Transaction ID"         | uint16)               ::
     ("Response"               | constant(bin"0"))     :: 
     ("Opcode"                 | ignore(4))            ::
@@ -81,8 +81,7 @@ object DnsCodec {
     ("Class"                  | constant(hex"00 01"))
   ).dropUnits.as[Request]
 
-  def flags = (
-    //("Response"               | constant(bin"1"))     :: 
+  def xflags = (
     ("Response"               | ignore(1)) :: 
     ("Opcode"                 | ignore(4))            ::
     ("Authorative"            | ignore(1))            ::
@@ -94,38 +93,24 @@ object DnsCodec {
     ("Non-authenticated data" | ignore(1))            ::
     ("Reply code"             | ignore(4))
   ).dropUnits
-  
-  def header = (
+ 
+  def dnsResponseCodec = (
     ("Transaction ID"         | uint16)               ::
-    flags :::
+    xflags :::
     ("Questions"              | constant(hex"00 01")) ::
     ("Answer RRs"             | ignore(16))           ::
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
     ("Name"                   | dnsString)            ::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01")) ::
-    ("Name"                   | constant(hex"c0 0c"))
-  ).dropUnits
-    
-  def xdnsResponseCodec = (
-    header :::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01")) ::
+    ("Type"                   | ignore(16))           ::
+    ("Class"                  | ignore(16))           ::
+    ("NameR"                  | ignore(16))           ::
+    ("TypeR"                  | constant(hex"00 01")) ::
+    ("ClassR"                 | constant(hex"00 01")) ::
     ("TTL"                    | ignore(32))           ::
-    ("Data Length"            | constant(hex"00 04")) ::
-    ("Address"                | ipv4)
-  ).dropUnits.as[Response]
-
-  def dnsResponseCodec = (
-    header :::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01")) ::
-    ("TTL"                    | ignore(32))           ::
-    ("Data Length"            | constant(hex"00 04")) ::
+    ("Data Length"            | constant(hex"00 04")) :: //should this matter?
     ("Address"                | vector(ipv4))
-  ).dropUnits.as[FullResponse]
-
+  ).dropUnits.as[Response]
 }
 
 /*

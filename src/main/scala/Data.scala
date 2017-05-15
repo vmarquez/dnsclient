@@ -1,14 +1,3 @@
-package dnsclient
-
-
-object Data {
-
-import scodec.Codec
-import scodec.codecs._
-import scodec.protocols.ip.Port
-import scodec.bits._
-import shapeless._
-
 /*
 
                                     1  1  1  1  1  1
@@ -136,55 +125,10 @@ RCODE           Response code - this 4 bit field is set as part of
 */
   //we are looking for an A or a 1
   //Class should be a 1
+
+
+
 /*
-  case class CName(name: String, ttl: Int, cname: String) extends ResourceRecord //make a trait? there is data too?
-
-  case class Address(name: String, ttl: Int, ip: Address) extends ResourceRecord //should be an SCodec IP Address
-
-  case class RRText(name: String, ttl: Int, text: String) extends ResourceRecord
-
-  trait ResourceRecord
-
-  implicit val codec: Codec[ResourceRecord] = {
-    ("name" | uint16)
-    ("type" | uint16).flatPrepend{ btype => 
-      ("class" | constant(hex"0x0001")) ::
-      ("ttl" | uint16) ::
-      ("data" | Codec.coproduct[ResourceRecord].discriminatedBy(provide(btype)).auto)
-    }}.as[ResourceRecord]
-*/
-/*
-
-import scodec._
-import scodec.codecs._
-import scodec.bits._
-
-case class Request(bodyType: Int, foo: Int, bar: Int, body: RequestBody)
-
-sealed trait RequestBody
-case class Read(key: String) extends RequestBody
-object Read {
-  implicit val codec: Codec[Read] = ("key" | utf8).as[Read]
-  implicit val discriminator: Discriminator[RequestBody, Read, Int] = Discriminator(0)
-}
-case class Write(key: String, value: ByteVector) extends RequestBody
-object Write {
-  implicit val codec: Codec[Write] = {
-    ("key"   | utf8  ) ::
-    ("value" | bytes )
-  }.as[Write]
-  implicit val discriminator: Discriminator[RequestBody, Write, Int] = Discriminator(1)
-}
-
-object Request {
-  implicit val codec: Codec[Request] = {
-    ("bodyType" | uint16 ).flatPrepend { bodyType =>
-    ("foo"      | uint16 ) ::
-    ("bar"      | uint16 ) ::
-    ("body"     | Codec.coproduct[RequestBody].discriminatedBy(provide(bodyType)).auto)
-  }}.as[Request]
-} 
-
 
 TYPE            value and meaning
 
@@ -235,4 +179,4 @@ CH              3 the CHAOS class
 
 HS              4 Hesiod [Dyer 87]
 */
-}
+
