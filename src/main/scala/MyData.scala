@@ -21,7 +21,7 @@ object DnsCodec {
 
   case class IPV4(a: Int, b: Int, c: Int, d: Int)
  
-  case class Response(transactionId: Int, name: DnsString, addresses: Vector[ResourceRecord]) extends DnsPacket
+  case class Response(transactionId: Int, question: DnsString, addresses: Vector[ResourceRecord]) extends DnsPacket
 
   case class ResourceRecord(ttl: Long, ip: IPV4)
 
@@ -48,16 +48,13 @@ object DnsCodec {
     import Attempt._
     override def decode(bits0: BitVector): Attempt[DecodeResult[DnsString]] = {
       def go(acc: List[String], bits: BitVector): Attempt[DecodeResult[NonEmptyList[String]]] = {
-        println("acc = " + acc)
-        println("bits length = " + bits.length)
         (uint8.decode(bits), acc) match {
           case (Successful(DecodeResult(v, rem)), h :: t) if (v == 0) =>
-            println("v == 0")
-            Successful(DecodeResult(NonEmptyList(h, t: _*), rem))
+            Successful(DecodeResult(NonEmptyList(h, t: _*), rem.splitAt(32)._2))
           case (Successful(DecodeResult(v, rem)), _) if (v != 0) =>
-            println("not 0")
             fixedSizeBytes(v.toLong, utf8).decode(rem) match {
-              case Attempt.Successful(DecodeResult(vs, rem2)) => go(vs :: acc, rem2.splitAt(40)._2)
+              case Attempt.Successful(DecodeResult(vs, rem2)) => 
+                go(vs :: acc, rem2) 
               case f: Attempt.Failure => f
             }
           case (f: Failure, _) => f
@@ -87,10 +84,6 @@ object DnsCodec {
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
     ("questions"              | vector(dnsString)) 
-    
-    //("Name"                   | dnsString)            ::
-    //("Type"                   | constant(hex"00 01")) ::
-    //("Class"                  | constant(hex"00 01"))
   ).dropUnits.as[Request]
 
   //case class Question(dnsString: DnsString)
@@ -125,7 +118,7 @@ object DnsCodec {
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
     ("Query Name"                   | dnsString)             //queries?
-    //("Address ResourceRecords"                | vector(resourceRecordCodec))
+   //("Address ResourceRecords"                | vector(resourceRecordCodec))
   ).dropUnits //.as[Response]
 
   def dnsResponseCodec = (
@@ -135,7 +128,7 @@ object DnsCodec {
     ("Answer RRs"             | ignore(16))           ::
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
-    ("Query Name"                   | dnsString)            :: //queries?
+    ("Query Name"             | dnsString)            :: //queries?
     ("Address ResourceRecords"                | vector(resourceRecordCodec))
   ).dropUnits.as[Response]
 }
@@ -145,11 +138,15 @@ import scalaz.NonEmptyList
 import dnsclient._
 import Test._
 
-client(NonEmptyList("reddit", List("com"): _*)).run.run 
 import scodec.bits._
 import dnsclient.DnsCodec._ 
 
+client(NonEmptyList("reddit", List("com"): _*)).run.run 
 val bits = hex"0x0672656464697403636f6d0000010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c".take(16).toBitVector 
+dnsString.decode(bits)
+
+dnsString.encode(DnsString(NonEmptyList("ab", List("org"): _*))).flatMap(DnsString.decode)
+
 
 he0x75c0818000010004000000000672656464697403636f6d0000010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c"
                                                    "0x00010001c00c000100010000000b00049765018cc00c000100010000000b00049765c18cc00c000100010000000b00049765818cc00c000100010000000b00049765418c
