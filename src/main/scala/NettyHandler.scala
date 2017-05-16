@@ -54,13 +54,17 @@ object CreateNetty {
 
   type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
   import DnsCodec._ 
-  def sendPacket(host: String, port: Int): Task[DnsPacket => Task[Unit]] = {
-    val f = CpsFunction(makeNettyClient(host, port) _)
-    import CodecLenses._
-    
-    val codec = implicitly[Iso[Err \/ DnsPacket, Err \/ DatagramPacket]]      
-    val finalfunc = f.toSafely[Err \/ DnsPacket] 
-  }
+  import Util._
+
+  //def sendPacket(host: String, port: Int): Task[Err \/ DnsPacket => Task[Unit]] = {
+  //  val f = makeNettyClient(host, port) _
+  //  val iso = CodecLenses.isoAtoDG[DnsPacket] 
+  //  val safef = toSafeCps(f) 
+  //  import CodecLenses._
+  //  //val codec = implicitly[Iso[Err \/ DnsPacket, Err \/ DatagramPacket]]      
+  //  val y: Int =  
+  //  ""
+  //}
 
   
   //todo: instead of \/ to Task[Unit], make an iso for DT => Task ? 
@@ -102,20 +106,24 @@ object CreateNetty {
 
 import scalaz.syntax.either._
 import scodec.Err
-case class CpsFunction[A](f: (A => Task[Unit]) => Task[A => Task[Unit]]) {
-    
-    def to[B](implicit I: Iso[A, B]): CpsFunction[B] =
-      CpsFunction((bf: (B => Task[Unit])) => {
-        val y = f((a: A) => bf(I.get(a))) 
-        y.map(bt => (b: B) => bt(I.rget(b)))
-    }) 
 
-    def toSafely[B](implicit I: Iso[A, B]): CpsFunction[Err \/ B] = 
-      CpsFunction(bertf => {
-        f(a => bertf(I.get(a).right[Err])).map(at => (b: Err \/ B) => b match {
-          case -\/(e) => Task.fail(new Throwable(e.message))
-          case \/-(b) => at(I.rget(b))
-        })
+object Util {
+  def toSafeCps[A, B](f: (A => Task[Unit]) => Task[A => Task[Unit]])(implicit I: Iso[Err \/ A, Err \/ B]): (Err \/ B => Task[Unit]) => Task[Err \/ B => Task[Unit]] = {
+    (ebtot) => {
+      val ret = f((a: A) => ebtot(I.get(a.right[Err])))
+      
+      val sret = ret.map(af => (eob: Err \/ B) => eob match{ 
+        case -\/(err) => Task.fail(new Throwable("blah"))
+        case \/-(b) => 
+          val y = I.rget(b.right[Err]) match {
+            case -\/(err) => Task.fail(new Throwable("Blah"))
+            case \/-(a) => af(a)
+          }
+          y
       })
+      sret
+    }
   }
+}
+
 
