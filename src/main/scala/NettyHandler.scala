@@ -51,7 +51,7 @@ object CreateNetty {
   import scalaz.syntax.either._
   import scalaz.Profunctor
   import scodec.Err
-
+  import Data._
   type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
   import DnsCodec._ 
   //def sendPacket(host: String, port: Int): Task[DnsPacket => Task[Unit]] = {
