@@ -51,22 +51,21 @@ object CreateNetty {
   import scalaz.syntax.either._
   import scalaz.Profunctor
   import scodec.Err
-
+  import Data._
   type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
   import DnsCodec._ 
   import Util._
+  import java.net.InetSocketAddress
 
-  //def sendPacket(host: String, port: Int): Task[Err \/ DnsPacket => Task[Unit]] = {
-  //  val f = makeNettyClient(host, port) _
-  //  val iso = CodecLenses.isoAtoDG[DnsPacket] 
-  //  val safef = toSafeCps(f) 
-  //  import CodecLenses._
-  //  //val codec = implicitly[Iso[Err \/ DnsPacket, Err \/ DatagramPacket]]      
-  //  val y: Int =  
-  //  ""
-  //}
+  def sendPacket(host: String, port: Int): ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
+    val f = makeNettyClient(host, port) _
+    //val iso = CodecLenses.codecAtoDG[DnsPacket] 
+   val iso = CodecLenses.codecDGtoA[DnsPacket] 
+    val safef = toSafeCps[DatagramPacket, (InetSocketAddress, DnsPacket)](f)(iso)
+    import CodecLenses._
+    safef 
+  }
 
-  
   //todo: instead of \/ to Task[Unit], make an iso for DT => Task ? 
   def makeNettyClient(host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
     val connectFactory = new DefaultThreadFactory("connect")

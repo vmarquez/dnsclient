@@ -17,3 +17,7 @@ initialCommands in console := "import scalaz._;import Scalaz._;import scala.conc
 scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-language:higherKinds")
 
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
+
+libraryDependencies += "com.lihaoyi" % "ammonite" % "0.8.2" % "test" cross CrossVersion.full
+
+initialCommands in (Test, console) := """ammonite.Main().run()"""

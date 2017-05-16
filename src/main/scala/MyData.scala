@@ -1,24 +1,15 @@
 package dnsclient
-
-import scodec.{bits => _, _}
-import scodec.codecs._
-import scodec.bits._
-
-
-
-object DnsLenses {
-  
-}
+import Data._
 
 object DnsCodec {
   import scalaz.NonEmptyList 
   import scalaz.syntax.foldable1._
-  
-  trait DnsPacket
-  case class DnsString(nel: NonEmptyList[String])  
-  case class Request(transactionID: Int, name: DnsString) extends DnsPacket
-  case class IPV4(a: Int, b: Int, c: Int, d: Int)
-  case class Response(transactionID: Int, name: DnsString, address: IPV4) extends DnsPacket
+  import scodec.{bits => _, _}
+  import scodec.codecs._
+  import scodec.bits._
+
+ 
+  def resourceRecordCodec: Codec[ResourceRecord] = (ignore(64) :: uint32 :: ipv4).as[ResourceRecord]
 
   def ipv4: Codec[IPV4] = (uint8 :: uint8 :: uint8 :: uint8).as[IPV4]
 
@@ -36,22 +27,24 @@ object DnsCodec {
         cur <- acc
         b <- encodeStr(s)
       } yield cur ++ b 
-    }.map(_ ++ BitVector.lowByte)
+    }.map(_ ++ BitVector.lowByte ++ hex"00 01".toBitVector ++ hex"00 01".toBitVector)
       
     import Attempt._
     override def decode(bits0: BitVector): Attempt[DecodeResult[DnsString]] = {
-      def go(acc: List[String], bits: BitVector): Attempt[DecodeResult[NonEmptyList[String]]] =
+      def go(acc: List[String], bits: BitVector): Attempt[DecodeResult[NonEmptyList[String]]] = {
         (uint8.decode(bits), acc) match {
           case (Successful(DecodeResult(v, rem)), h :: t) if (v == 0) =>
-            Successful(DecodeResult(NonEmptyList(h, t: _*), rem))
+            Successful(DecodeResult(NonEmptyList(h, t: _*), rem.splitAt(32)._2))
           case (Successful(DecodeResult(v, rem)), _) if (v != 0) =>
             fixedSizeBytes(v.toLong, utf8).decode(rem) match {
-              case Attempt.Successful(DecodeResult(vs, rem2)) => go(vs :: acc, rem2)
+              case Attempt.Successful(DecodeResult(vs, rem2)) => 
+                go(vs :: acc, rem2) 
               case f: Attempt.Failure => f
             }
           case (f: Failure, _) => f
           case _ => Failure(Err("no dnsstring data to process"))
         }
+      }
         go(Nil, bits0).map(_.map(nel => DnsString(nel)))
       }
     }
@@ -59,28 +52,14 @@ object DnsCodec {
     def roundTrip[T](v: T, codec: Codec[T]) = codec.encode(v).flatMap(codec.decode).map(_.value)  
   
     roundTrip(DnsString(NonEmptyList("www", List("netbsd", "org"): _*)), dnsString)
+  def msgTypeCodec: Codec[MessageType] = mappedEnum(
+    bool, 
+    DnsRequest -> false,
+    DnsResponse -> true)
 
-    val dnsRequestCodec = (
+  implicit def dnsPacketCodec: Codec[DnsPacket] = (
     ("Transaction ID"         | uint16)               ::
-    ("Response"               | constant(bin"0"))     :: 
-    ("Opcode"                 | ignore(4))            ::
-    ("Reserved"               | ignore(1))            ::
-    ("Truncated"              | ignore(1))            ::
-    ("Recursion"              | constant(bin"1"))     ::
-    ("Reserved"               | ignore(3))            ::
-    ("Non-authenticated data" | ignore(1))            ::
-    ("Reserved"               | ignore(4))            ::
-    ("Questions"              | constant(hex"00 01")) ::
-    ("Answer RRs"             | ignore(16))           ::
-    ("Authority RRs"          | ignore(16))           ::
-    ("Additional RRs"         | ignore(16))           ::
-    ("Name"                   | dnsString)            ::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01"))
-  ).dropUnits.as[Request]
-
-  def flags = (
-    ("Response"               | constant(bin"1"))     :: 
+    ("Response"               | msgTypeCodec)         :: 
     ("Opcode"                 | ignore(4))            ::
     ("Authorative"            | ignore(1))            ::
     ("Truncated"              | ignore(1))            ::
@@ -89,29 +68,23 @@ object DnsCodec {
     ("Reserved"               | ignore(1))            ::
     ("Answer authenticated"   | ignore(1))            :: 
     ("Non-authenticated data" | ignore(1))            ::
-    ("Reply code"             | ignore(4))
-  ).dropUnits
-  
-  def header = (
-    ("Transaction ID"         | uint16)               ::
-    flags :::
+    ("Reply code"             | ignore(4))            ::
     ("Questions"              | constant(hex"00 01")) ::
-    ("Answer RRs"             | constant(hex"00 01")) ::
+    ("Answer RRs"             | ignore(16))           ::
     ("Authority RRs"          | ignore(16))           ::
     ("Additional RRs"         | ignore(16))           ::
-    ("Name"                   | dnsString)            ::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01")) ::
-    ("Name"                   | constant(hex"c0 0c"))
-  ).dropUnits
-    
-  def dnsResponseCodec = (
-    header :::
-    ("Type"                   | constant(hex"00 01")) ::
-    ("Class"                  | constant(hex"00 01")) ::
-    ("TTL"                    | ignore(32))           ::
-    ("Data Length"            | constant(hex"00 04")) ::
-    ("Address"                | ipv4)
-  ).dropUnits.as[Response]
-
+    ("Query Name"             | dnsString)            :: //queries?
+    ("Address ResourceRecords"                | vector(resourceRecordCodec))
+  ).dropUnits.as[DnsPacket]
 }
+
+/*
+import scalaz.NonEmptyList
+import dnsclient._
+import Test._
+
+import scodec.bits._
+import dnsclient.DnsCodec._ 
+
+client(NonEmptyList("reddit", List("com"): _*)).run.run 
+*/
