@@ -42,3 +42,17 @@ object Test {
     )
 }
 
+
+object NettyClientTest {
+
+  import scalaz.NonEmptyList
+  import scalaz.syntax.either._
+  import java.net.InetSocketAddress
+  import dnsclient._
+  import Data._
+  import scalaz.concurrent.Task
+
+  val socketAddress = new InetSocketAddress("8.8.8.8", 53) 
+  (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("reddit", List("com"): _*)))).right[Err] 
+
+}

@@ -1,6 +1,6 @@
 package dnsclient
-import scalaz.Profunctor
-
+import scalaz.{Profunctor, \/, -\/, \/-}
+/*
 trait FIso[F[_], S, A] { self =>
   import LensHelpers._
   def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S]
@@ -25,10 +25,11 @@ object FIso {
     override def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S] = 
       Profunctor[P].dimap(_)(sa)(as)   
   }
-}
+}*/
 //make first and second functions?
 trait Iso[S, A] { self =>
   import LensHelpers._
+  
   def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S]
 
   def get(s: S): A = 
@@ -43,6 +44,15 @@ trait Iso[S, A] { self =>
   }
 
   def reverse: Iso[A, S] = Iso(rget, get)
+  import scalaz.syntax.std.tuple._
+  import scalaz.syntax.functor._
+  import scalaz.syntax.either._
+  def first[C]: Iso[(C, S), (C, A)] = Iso[(C, S), (C, A)]({ case (c, s) => (c, self.get(s)) }, { case (c, a) => (c, self.rget(a)) })  
+
+  def choiceRight[C]: Iso[C \/ S, C \/ A] = Iso[C \/ S, C \/ A](
+    { case -\/(err) => err.left[A]; case \/-(s) => self.get(s).right[C] }, 
+    { case -\/(err) => err.left[S]; case \/-(a) => self.rget(a).right[C] }
+  )
 
 }
 

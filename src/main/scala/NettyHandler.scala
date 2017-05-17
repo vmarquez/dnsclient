@@ -60,9 +60,10 @@ object CreateNetty {
   def sendPacket(host: String, port: Int): ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
     val f = makeNettyClient(host, port) _
     //val iso = CodecLenses.codecAtoDG[DnsPacket] 
-   val iso = CodecLenses.codecDGtoA[DnsPacket] 
+    val iso = CodecLenses.codecToBytes[DnsPacket].reverse 
     val safef = toSafeCps[DatagramPacket, (InetSocketAddress, DnsPacket)](f)(iso)
-    import CodecLenses._
+    //import CodecLenses._
+    
     safef 
   }
 
@@ -124,5 +125,3 @@ object Util {
     }
   }
 }
-
-
