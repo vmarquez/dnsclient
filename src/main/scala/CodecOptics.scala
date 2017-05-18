@@ -13,7 +13,12 @@ object CodecLenses {
   import scalaz.syntax.functor._
   import scalaz.concurrent.Task
 
-  def datagramIso: Iso[(InetSocketAddress, Array[Byte]), DatagramPacket] = Iso(t => new DatagramPacket(Unpooled.copiedBuffer(t._2), t._1), dgp => (dgp.recipient, dgp.content.array))
+  def datagramIso: Iso[(InetSocketAddress, Array[Byte]), DatagramPacket] = Iso(t => new DatagramPacket(Unpooled.copiedBuffer(t._2), t._1), dgp => { 
+    val bytebuf = dgp.content
+    val bytearr = new Array[Byte](bytebuf.readableBytes())
+    bytebuf.getBytes(bytebuf.readerIndex(), bytearr)
+    (dgp.recipient, bytearr)
+  })
   
   def codecIso[A](implicit codec: Codec[A]): Iso[Err \/ A, Err \/ BitVector] = Iso(aa => aa.flatMap(codec.encode(_).toDisjunction), bv => bv.flatMap(b => codec.decode(b).map(_.value).toDisjunction))
   

@@ -1,31 +1,6 @@
 package dnsclient
 import scalaz.{Profunctor, \/, -\/, \/-}
-/*
-trait FIso[F[_], S, A] { self =>
-  import LensHelpers._
-  def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S]
 
-  def get(s: F[S])(implicit F: Functor[F]): F[A] = 
-    s.map(ss => stab[Forget[A, ?, ?]](Profunctor[Forget[A, ?, ?]])(Forget[A, A, A](a => a)).forget(ss))
-
-  def rget(a:F[A])(implicit F: Functor[F]): F[S] =
-    a.map(aa => stab[RConst](Profunctor[RConst])(RConst[A, A](aa)).b)
-
-  def compose[B](iso: Iso[A, B]): FIso[S, B] = new FIso[F, S, B] {
-    override def stab[P[_,_]](implicit P: Profunctor[P]): P[B, B] => P[S, S] =
-      iso.stab(P) andThen self.stab(P)
-  }
-
-  def reverse: Iso[A, S] = FIso(rget, get)
-
-}
-
-object FIso {
-  def apply[F[_], S, A](sa: S => A, as: A => S): FIso[F, S, A] = new FIso[F, S, A] {
-    override def stab[P[_, _]: Profunctor]: P[A, A] => P[S, S] = 
-      Profunctor[P].dimap(_)(sa)(as)   
-  }
-}*/
 //make first and second functions?
 trait Iso[S, A] { self =>
   import LensHelpers._

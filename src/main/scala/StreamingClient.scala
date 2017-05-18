@@ -51,8 +51,9 @@ object NettyClientTest {
   import dnsclient._
   import Data._
   import scalaz.concurrent.Task
-
+  import scodec.Err
   val socketAddress = new InetSocketAddress("8.8.8.8", 53) 
-  (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("reddit", List("com"): _*)))).right[Err] 
-
+  val request = (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("reddit", List("com"): _*)))).right[Err] 
+  val f = NettyHandler.sendPacket("8.8.8.8", 53) 
+  f(t => Task.now(println(t))).flatMap(ff => ff(request)) 
 }

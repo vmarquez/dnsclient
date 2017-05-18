@@ -8,37 +8,10 @@ import scalaz.{\/, -\/, \/-}
 import scalaz.concurrent.Task
 import scala.concurrent.duration._
 import java.net.InetSocketAddress
-//import Util._
 
-/*
-    // Configure the client.
-50          final ThreadFactory connectFactory = new DefaultThreadFactory("connect");
-51          final NioEventLoopGroup connectGroup = new NioEventLoopGroup(1,
-52                  connectFactory, NioUdtProvider.MESSAGE_PROVIDER);
-53          try {
-54              final Bootstrap boot = new Bootstrap();
-55              boot.group(connectGroup)
-56                      .channelFactory(NioUdtProvider.MESSAGE_CONNECTOR)
-57                      .handler(new ChannelInitializer<UdtChannel>() {
-58                          @Override
-59                          public void initChannel(final UdtChannel ch)
-60                                  throws Exception {
-61                              ch.pipeline().addLast(
-62                                      new LoggingHandler(LogLevel.INFO),
-63                                      new MsgEchoClientHandler());
-64                          }
-65                      });
-66              // Start the client.
-67              final ChannelFuture f = boot.connect(HOST, PORT).sync();
-68              // Wait until the connection is closed.
-69              f.channel().closeFuture().sync();
-70          } finally {
-71              // Shut down the event loop to terminate all threads.
-72              connectGroup.shutdownGracefully();
-73          }
-*/
 
-object CreateNetty {
+
+object NettyHandler {
   import io.netty.bootstrap.Bootstrap
   import io.netty.channel.ChannelFuture
   import io.netty.channel.ChannelInitializer
@@ -49,58 +22,44 @@ object CreateNetty {
   import io.netty.handler.logging.LoggingHandler
   import io.netty.util.concurrent.DefaultThreadFactory
   import scalaz.syntax.either._
-  import scalaz.Profunctor
   import scodec.Err
   import Data._
-  type DGHandler = SimpleChannelInboundHandler[DatagramPacket]
   import DnsCodec._ 
   import Util._
   import java.net.InetSocketAddress
+  import io.netty.channel.socket.nio.NioDatagramChannel
 
+  
   def sendPacket(host: String, port: Int): ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
     val f = makeNettyClient(host, port) _
-    //val iso = CodecLenses.codecAtoDG[DnsPacket] 
     val iso = CodecLenses.codecToBytes[DnsPacket].reverse 
     val safef = toSafeCps[DatagramPacket, (InetSocketAddress, DnsPacket)](f)(iso)
-    //import CodecLenses._
-    
     safef 
   }
-
-  //todo: instead of \/ to Task[Unit], make an iso for DT => Task ? 
-  def makeNettyClient(host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
-    val connectFactory = new DefaultThreadFactory("connect")
-    val connectGroup = new NioEventLoopGroup(1, connectFactory, NioUdtProvider.MESSAGE_PROVIDER)
-    Task.delay {
-      val bs = new Bootstrap()
-      val (handler, ctxtask) = createHandler(incoming)
-      bs.group(connectGroup).channelFactory(NioUdtProvider.MESSAGE_CONNECTOR).handler(new ChannelInitializer[UdtChannel]() {
-        override def initChannel(ch: UdtChannel): Unit =
-          ch.pipeline().addLast(new LoggingHandler(LogLevel.INFO), handler)
-      })
-      //start the stuff
-      val f = bs.connect(host, port).sync()
-      f.channel().closeFuture().sync()
-      println("started")
-      ctxtask.map(ctx => (dg: DatagramPacket) => Task.delay {
-        ctx.write(dg)
-        ctx.flush()
-        ()
-      })
-    }.flatMap(a => a)//.onFinish(t => Task.delay(connectGroup.shutdownGracefully()).map(_ => ()))
-  }
   
-  def createHandler(incoming: DatagramPacket => Task[Unit]): (DGHandler, Task[ChannelHandlerContext]) = {
-    var t: Task[ChannelHandlerContext] = Task.fail(new Throwable("not initialized"))
-    val handler = new SimpleChannelInboundHandler[DatagramPacket] {
-      override def channelActive(ctx: ChannelHandlerContext): Unit = { 
-        t = Task.async(f => f(ctx.right[Throwable])) 
+  def makeNettyClient(host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
+    for {
+      bootstrap <-Task.delay(new Bootstrap())
+      group     = new NioEventLoopGroup()
+      handler   = simpleHandler(incoming)
+      _         = bootstrap.group(group).channel(classOf[NioDatagramChannel]).handler(handler)
+      ch       <- Task.delay(bootstrap.bind(0).sync.channel())
+     } yield {
+        println(" \n \n ok we made a client and started it up!")   
+        (d: DatagramPacket) => 
+          Task.delay { 
+          println("ok we did the datagram thing! \n >>>>>>>>>")
+          ch.writeAndFlush(d).sync() 
+          println("done")
+        }
       }
-
-      override def channelRead0(ctx: ChannelHandlerContext, packet: DatagramPacket): Unit =
-        incoming(packet).map(_ => ctx.flush()).attemptRunFor(1.seconds) //TODO: can I flush here?
-    }
-    (handler, t)
+  } 
+   
+  def simpleHandler(incoming: DatagramPacket => Task[Unit]) = new SimpleChannelInboundHandler[DatagramPacket] {
+    override def channelRead0(ctx: ChannelHandlerContext, packet: DatagramPacket): Unit ={
+        println("\n \n \n ~~~~~~> chanenl READ \n ") 
+        println(incoming(packet).attemptRunFor(10.seconds)) //TODO: can I flush here?
+      }
   }
 }
 

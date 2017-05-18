@@ -7,7 +7,6 @@ object DnsCodec {
   import scodec.{bits => _, _}
   import scodec.codecs._
   import scodec.bits._
-
  
   def resourceRecordCodec: Codec[ResourceRecord] = (ignore(64) :: uint32 :: ipv4).as[ResourceRecord]
 
@@ -49,9 +48,9 @@ object DnsCodec {
       }
     }
     
-    def roundTrip[T](v: T, codec: Codec[T]) = codec.encode(v).flatMap(codec.decode).map(_.value)  
+  //def roundTrip[T](v: T, codec: Codec[T]) = codec.encode(v).flatMap(codec.decode).map(_.value)  
+  //roundTrip(DnsString(NonEmptyList("www", List("netbsd", "org"): _*)), dnsString)
   
-    roundTrip(DnsString(NonEmptyList("www", List("netbsd", "org"): _*)), dnsString)
   def msgTypeCodec: Codec[MessageType] = mappedEnum(
     bool, 
     DnsRequest -> false,
