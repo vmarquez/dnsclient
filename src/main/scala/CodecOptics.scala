@@ -23,15 +23,16 @@ object CodecLenses {
   def codecIso[A](implicit codec: Codec[A]): Iso[Err \/ A, Err \/ BitVector] = Iso(aa => aa.flatMap(codec.encode(_).toDisjunction), bv => bv.flatMap(b => codec.decode(b).map(_.value).toDisjunction))
   
   def bvToBa: Iso[BitVector, Array[Byte]] = Iso(b => b.toByteArray, ba => ByteVector(ba).toBitVector)
+  import scalaz._
+  import Scalaz._
+  //hmm not so efficient
+  def addressAbv[A](implicit c: Codec[A]): Iso[Err \/ (InetSocketAddress, A), Err \/ (InetSocketAddress, BitVector)] = Iso.apply[Err \/ (InetSocketAddress, A), Err \/ (InetSocketAddress, BitVector)](
+      err => err.fold(e => e.left[(InetSocketAddress, BitVector)], t => codecIso[A].get(t._2.right[Err]).map(a => (t._1, a))), 
+      err => err.fold(e => e.left[(InetSocketAddress, A)], t => codecIso[A].rget(t._2.right[Err]).map(a => (t._1, a)))
+    )
 
-  def codecToBytes[A](implicit codec: Codec[A]): Iso[Err \/ (InetSocketAddress, A),  Err \/ DatagramPacket] = {
-    import scalaz._
-    import Scalaz._
-    val ciso = codecIso[A]
-    val niso = Iso.apply[Err \/ (InetSocketAddress, A), Err \/ (InetSocketAddress, BitVector)](
-      err => err.fold(e => e.left[(InetSocketAddress, BitVector)], t => ciso.get(t._2.right[Err]).map(a => (t._1, a))), 
-      err => err.fold(e => e.left[(InetSocketAddress, A)], t => ciso.rget(t._2.right[Err]).map(a => (t._1, a)))
-    ) 
+  def codecToBytes[A](implicit codec: Codec[A]): Iso[Err \/ (InetSocketAddress, A),  Err \/ DatagramPacket] =
+    val niso = addrBVIso
     niso compose (bvToBa.first[InetSocketAddress].choiceRight[Err] compose datagramIso.choiceRight[Err])
   }
 

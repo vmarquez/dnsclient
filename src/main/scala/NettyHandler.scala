@@ -45,12 +45,10 @@ object NettyHandler {
       _         = bootstrap.group(group).channel(classOf[NioDatagramChannel]).handler(handler)
       ch       <- Task.delay(bootstrap.bind(0).sync.channel())
      } yield {
-        println(" \n \n ok we made a client and started it up!")   
         (d: DatagramPacket) => 
           Task.delay { 
-          println("ok we did the datagram thing! \n >>>>>>>>>")
           ch.writeAndFlush(d).sync() 
-          println("done")
+          println("done sending datagram!")
         }
       }
   } 
