@@ -22,9 +22,10 @@ trait Iso[S, A] { self =>
   import scalaz.syntax.std.tuple._
   import scalaz.syntax.functor._
   import scalaz.syntax.either._
+  
   def first[C]: Iso[(C, S), (C, A)] = Iso[(C, S), (C, A)]({ case (c, s) => (c, self.get(s)) }, { case (c, a) => (c, self.rget(a)) })  
 
-  def choiceRight[C]: Iso[C \/ S, C \/ A] = Iso[C \/ S, C \/ A](
+  def choiceLeft[C]: Iso[C \/ S, C \/ A] = Iso[C \/ S, C \/ A](
     { case -\/(err) => err.left[A]; case \/-(s) => self.get(s).right[C] }, 
     { case -\/(err) => err.left[S]; case \/-(a) => self.rget(a).right[C] }
   )

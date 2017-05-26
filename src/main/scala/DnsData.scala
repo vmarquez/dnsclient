@@ -2,6 +2,9 @@ package dnsclient
 import scalaz.NonEmptyList
 
 object Data {
+  //example usage:
+  val dns = dnsRequest(1234, DnsString(NonEmptyList("scala", List("org"): _*)))
+  
   //trait DnsPacket
   case class DnsString(nel: NonEmptyList[String])  
   case class IPV4(a: Int, b: Int, c: Int, d: Int)

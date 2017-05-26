@@ -30,14 +30,15 @@ object NettyHandler {
   import io.netty.channel.socket.nio.NioDatagramChannel
 
   
-  def sendPacket(host: String, port: Int): ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
-    val f = makeNettyClient(host, port) _
+  def sendPacket: ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
+    val f = OutgoingSafeCps(makeNettyClient _) 
     val iso = CodecLenses.codecToBytes[DnsPacket].reverse 
-    val safef = toSafeCps[DatagramPacket, (InetSocketAddress, DnsPacket)](f)(iso)
-    safef 
+    f.leftChoice[Err].ixmap(iso).f  
+    //val safef = toSafeCps[DatagramPacket, (InetSocketAddress, DnsPacket)](f)(iso)
+    //safef 
   }
   
-  def makeNettyClient(host: String, port: Int)(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
+  def makeNettyClient(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
     for {
       bootstrap <-Task.delay(new Bootstrap())
       group     = new NioEventLoopGroup()
@@ -65,20 +66,46 @@ import scalaz.syntax.either._
 import scodec.Err
 
 object Util {
-  def toSafeCps[A, B](f: (A => Task[Unit]) => Task[A => Task[Unit]])(implicit I: Iso[Err \/ A, Err \/ B]): (Err \/ B => Task[Unit]) => Task[Err \/ B => Task[Unit]] = {
-    (ebtot) => {
-      val ret = f((a: A) => ebtot(I.get(a.right[Err])))
-      
-      val sret = ret.map(af => (eob: Err \/ B) => eob match{ 
-        case -\/(err) => Task.fail(new Throwable("blah"))
-        case \/-(b) => 
-          val y = I.rget(b.right[Err]) match {
-            case -\/(err) => Task.fail(new Throwable("Blah"))
-            case \/-(a) => af(a)
-          }
-          y
-      })
-      sret
+
+  case class OutgoingSafeCps[A](f: ((A => Task[Unit]) => Task[A => Task[Unit]])) {
+    def xmap[B](fab: A => B, gba: B => A): OutgoingSafeCps[B] = {
+      val bf = (btot: B => Task[Unit]) => { 
+        val ret = f((a: A) => btot(fab(a)))
+        ret.map(atot => (b: B) => atot(gba(b))) 
+      }
+      OutgoingSafeCps(bf) 
     }
-  }
+
+    def ixmap[B](iso: Iso[A, B]): OutgoingSafeCps[B] =
+      xmap(iso.get _, iso.rget _)
+
+    def leftChoice[C]: OutgoingSafeCps[C \/ A] = { //sad, left choice should really allow for us to abstract over the type of the \/
+      val caf = (catot: C \/ A => Task[Unit]) => {
+        val ret = f((a: A) => catot(\/-(a)))
+        ret.map(att => (ca: C \/ A) => ca match {
+          case -\/(c) => Task.fail(new Throwable(c.toString)) 
+          case \/-(a) => att(a)
+        })
+      }
+      OutgoingSafeCps(caf)
+    }
+
+    //def dimap[A, B, C, D](ca: C => A, bd: B => D): OutgoingSafeCps
+}
+  //def toSafeCps[A, B](f: (A => Task[Unit]) => Task[A => Task[Unit]])(implicit I: Iso[Err \/ A, Err \/ B]): (Err \/ B => Task[Unit]) => Task[Err \/ B => Task[Unit]] = {
+  //  (ebtot) => {
+  //    val ret = f((a: A) => ebtot(I.get(a.right[Err])))
+  //    
+  //    val sret = ret.map(af => (eob: Err \/ B) => eob match{ 
+  //      case -\/(err) => Task.fail(new Throwable("blah"))
+  //      case \/-(b) => 
+  //        val y = I.rget(b.right[Err]) match {
+  //          case -\/(err) => Task.fail(new Throwable("Blah"))
+  //          case \/-(a) => af(a)
+  //        }
+  //        y
+  //    })
+  //    sret
+  //  }
+  //}
 }

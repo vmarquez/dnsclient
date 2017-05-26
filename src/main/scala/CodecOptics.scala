@@ -13,7 +13,7 @@ object CodecLenses {
   import scalaz.syntax.functor._
   import scalaz.concurrent.Task
 
-  def datagramIso: Iso[(InetSocketAddress, Array[Byte]), DatagramPacket] = Iso(t => new DatagramPacket(Unpooled.copiedBuffer(t._2), t._1), dgp => { 
+  val datagramIso: Iso[(InetSocketAddress, Array[Byte]), DatagramPacket] = Iso(t => new DatagramPacket(Unpooled.copiedBuffer(t._2), t._1), dgp => { 
     val bytebuf = dgp.content
     val bytearr = new Array[Byte](bytebuf.readableBytes())
     bytebuf.getBytes(bytebuf.readerIndex(), bytearr)
@@ -27,15 +27,14 @@ object CodecLenses {
   import Scalaz._
   //hmm not so efficient
   def addressAbv[A](implicit c: Codec[A]): Iso[Err \/ (InetSocketAddress, A), Err \/ (InetSocketAddress, BitVector)] = Iso.apply[Err \/ (InetSocketAddress, A), Err \/ (InetSocketAddress, BitVector)](
-      err => err.fold(e => e.left[(InetSocketAddress, BitVector)], t => codecIso[A].get(t._2.right[Err]).map(a => (t._1, a))), 
-      err => err.fold(e => e.left[(InetSocketAddress, A)], t => codecIso[A].rget(t._2.right[Err]).map(a => (t._1, a)))
+      err => err.flatMap(t => codecIso[A].get(t._2.right[Err]).map(a => (t._1, a))), 
+      err => err.flatMap(t => codecIso[A].rget(t._2.right[Err]).map(a => (t._1, a)))
     )
 
-  def codecToBytes[A](implicit codec: Codec[A]): Iso[Err \/ (InetSocketAddress, A),  Err \/ DatagramPacket] =
-    val niso = addrBVIso
-    niso compose (bvToBa.first[InetSocketAddress].choiceRight[Err] compose datagramIso.choiceRight[Err])
+  def codecToBytes[A](implicit codec: Codec[A]): Iso[Err \/ (InetSocketAddress, A),  Err \/ DatagramPacket] = {
+    val niso = addressAbv[A]
+    niso compose (bvToBa.first[InetSocketAddress].choiceLeft[Err] compose datagramIso.choiceLeft[Err])
   }
-
 }
 
 
