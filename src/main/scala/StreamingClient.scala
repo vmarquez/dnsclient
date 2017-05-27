@@ -11,37 +11,6 @@ import scala.concurrent.duration._
 import scalaz.syntax.std.option._
 import scalaz.NonEmptyList
 
-object Test {
-  import DnsCodec._
-  import Data._
-
-  def client(nel: NonEmptyList[String]) = udp.listen(8080) {
-    udp.eval_(Task.delay { println("hello world") }) ++
-    (for {
-      request <- asProcess(dnsPacketCodec.encode(dnsRequest(30144, DnsString(nel))))
-      _ <- udp.send(to = l3dns, request.bytes)
-      _ = println("ok we sent")
-      //packet <- udp.receive(maxSize)
-      packet <- udp.receive(1024, 20.seconds.some)
-      _ = println("recieved")
-      //_  = println(packet.bytes.bits.toList.map(_.toHex))
-      _  = println(packet.bytes.bits.toByteVector)
-
-      response <- asProcess(dnsPacketCodec.decode(packet.bytes.bits))
-      _ = println("response = " + response)
-    } yield List(response))
-  }
-  val l3dns = new InetSocketAddress("8.8.8.8", 53)
-  
-  def asProcess[T](attempt: Attempt[T]): Process0[T] = 
-    Process.emit(
-      attempt.fold(
-        f => throw new Exception(f.messageWithContext),
-        v => v       
-      )
-    )
-}
-
 
 object NettyClientTest {
 
@@ -55,11 +24,11 @@ object NettyClientTest {
   import scodec.Err
   val socketAddr = new InetSocketAddress("128.138.129.76", 53) 
   val socketAddress = new InetSocketAddress("8.8.8.8", 53)
-  val request = (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("scala", List("org"): _*)))).right[Err] 
-  val request = (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("msn", List("com"): _*)))).right[Err] 
+  val request2 = (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("scala", List("org"): _*)))).right[Err] 
+  val request1 = (socketAddress, dnsRequest(1234, DnsString(NonEmptyList("msn", List("com"): _*)))).right[Err] 
 
   val f = NettyHandler.sendPacket
-  f(t => Task.now(println(t))).flatMap(ff => ff(request)) 
+  f(t => Task.now(println(t))).flatMap(ff => ff(request1)) 
   val dns = dnsRequest(1234, DnsString(NonEmptyList("scala", List("org"): _*)))
 
 }

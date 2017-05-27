@@ -33,7 +33,7 @@ object CodecLenses {
 
   def codecToBytes[A](implicit codec: Codec[A]): Iso[Err \/ (InetSocketAddress, A),  Err \/ DatagramPacket] = {
     val niso = addressAbv[A]
-    niso compose (bvToBa.first[InetSocketAddress].choiceLeft[Err] compose datagramIso.choiceLeft[Err])
+    niso compose (bvToBa.first[InetSocketAddress].choiceRight[Err] compose datagramIso.choiceRight[Err])
   }
 }
 
