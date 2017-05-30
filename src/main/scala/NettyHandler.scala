@@ -21,7 +21,6 @@ object NettyHandler {
   import io.netty.handler.logging.LogLevel
   import io.netty.handler.logging.LoggingHandler
   import io.netty.util.concurrent.DefaultThreadFactory
-  //import scalaz.syntax.either._
   import scodec.Err
   import Data._
   import DnsCodec._ 
@@ -30,17 +29,10 @@ object NettyHandler {
   import io.netty.channel.socket.nio.NioDatagramChannel
   import scalaz._
   
-  def sendPacket: ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
-    import scalaz.syntax.profunctor._
-    import scalaz.syntax.invariantFunctor._
-    import scalaz.syntax.proChoice
-    val f = OutgoingCps(makeNettyClient _)
-    val iso = CodecLenses.codecToBytes[DnsPacket].reverse
-    val xf = f.choiceRight[Err]
-    val invf = Profunctor[OutgoingCps].invariantFunctor.xmapi(xf)(iso.toScalazIso)
-     ???
-  }
   
+ 
+  def getNettyClient = OutgoingCps(makeNettyClient _ )
+
   def makeNettyClient(incoming: DatagramPacket => Task[Unit]): Task[DatagramPacket => Task[Unit]] = {
     for {
       bootstrap <-Task.delay(new Bootstrap())
@@ -59,9 +51,19 @@ object NettyHandler {
    
   def simpleHandler(incoming: DatagramPacket => Task[Unit]) = new SimpleChannelInboundHandler[DatagramPacket] {
     override def channelRead0(ctx: ChannelHandlerContext, packet: DatagramPacket): Unit ={
-        println("\n \n \n ~~~~~~> chanenl READ \n ") 
         println(incoming(packet).attemptRunFor(10.seconds)) //TODO: can I flush here?
       }
+  }
+
+  def sendPacket: ((Err \/ (InetSocketAddress, DnsPacket)) => Task[Unit]) => Task[Err \/ (InetSocketAddress, DnsPacket) => Task[Unit]] = {
+    import scalaz.syntax.profunctor._
+    import scalaz.syntax.invariantFunctor._
+    import scalaz.syntax.proChoice
+    val f = OutgoingCps(makeNettyClient _)
+    val iso = CodecLenses.codecToBytes[DnsPacket].reverse
+    val xf = f.choiceRight[Err]
+    val invf = Profunctor[OutgoingCps].invariantFunctor.xmapi(xf)(iso.toScalazIso)
+    ???
   }
 }
 
@@ -92,14 +94,6 @@ object Util {
       OutgoingCps(ret) 
     }
     
-    //def xmap[B](fab: A => B, gba: B => A): OutgoingSafeCps[B] = {
-    //  val bf = (btot: B => Task[Unit]) => { 
-    //    val ret = f((a: A) => btot(fab(a)))
-    //    ret.map(atot => (b: B) => atot(gba(b))) 
-    //  }
-    //  OutgoingSafeCps(bf) 
-    //}
-
     def choiceRight[C]: OutgoingCps[C \/ A, C \/ B] = { //sad, left choice should really allow for us to abstract over the type of the \/
       val caf = (catot: C \/ B => Task[Unit]) => {
         val ret = f((b: B) => catot(\/-(b)))
